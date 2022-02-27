@@ -313,6 +313,17 @@ int ReadGraph(const std::string name_file_graph, std::vector<IntId>& sorted_id_c
 	ifile.close();
 	return 0;
 }
+int ReadGraphBin(const std::string name_file_graph, std::vector<IntId>& sorted_id_cell) {
+
+	std::unique_ptr<FILE, int(*)(FILE*)> file_graph(fopen(name_file_graph.c_str(), "rb"), fclose);
+	if (!file_graph) { printf("file_graph is not opened for writing\n"); return 1; }
+
+	const int n = sorted_id_cell.size();
+	fread_unlocked(sorted_id_cell.data(), sizeof(IntId), n, file_graph.get());
+
+	fclose(file_graph.get());
+	return 0;
+}
 
 int SetVertexMatrix(const size_t number_cell, const vtkSmartPointer<vtkUnstructuredGrid>& unstructured_grid, Eigen::Matrix4d& vertex_tetra) {
 

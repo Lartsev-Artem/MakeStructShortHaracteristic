@@ -4,7 +4,7 @@
 
 #include "struct_short_characteristics_headers.h"
 
-#define BASE_ADRESS "D:\\Desktop\\FilesCourse\\IllumGrid\\"
+#define BASE_ADRESS "D:\\Desktop\\FilesCourse\\IllumGrid\\testConfig\\"
 
 
 #ifdef _MSC_VER

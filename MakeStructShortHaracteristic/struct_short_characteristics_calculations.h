@@ -24,6 +24,7 @@ int ReadNormalFile(std::string& name_file_normals, std::vector<Normals>& normals
 
 Type NormIllum(const std::vector<Type>& Illum, const std::vector<Type>& Illum2);
 int ReadGraph(const std::string name_file_graph, std::vector<IntId>& sorted_id_cell);
+int ReadGraphBin(const std::string name_file_graph, std::vector<IntId>& sorted_id_cell);
 int SetVertexMatrix(const size_t number_cell, const vtkSmartPointer<vtkUnstructuredGrid>& unstructured_grid, Eigen::Matrix4d& vertex_tetra);
 int FindInAndOutFaces(const Vector3& direction, const int number_cell, const std::vector<Normals>& normals, int* face_state);
 size_t CenterOfTetra(const int number_cell, const vtkSmartPointer<vtkUnstructuredGrid>& unstructuredgrid, Vector3& point_in_tetra);

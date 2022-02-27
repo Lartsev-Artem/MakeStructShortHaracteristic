@@ -61,7 +61,6 @@ int main(int argc, char* argv[])
 		return 1;
 	}
 
-
 	vtkSmartPointer<vtkUnstructuredGrid> unstructured_grid =
 		vtkSmartPointer<vtkUnstructuredGrid>::New();
 
@@ -181,7 +180,7 @@ int main(int argc, char* argv[])
 				num_cur_direction = num_direction;
 				cur_direction = direction;
 
-				ReadGraph(name_file_graph + to_string(num_direction) + ".txt", sorted_id_cell);
+				ReadGraphBin(name_file_graph + to_string(num_direction) + ".bin", sorted_id_cell);
 				//ResetNodesValue(nodes_value);
 
 				Vector3 x;
@@ -295,10 +294,11 @@ int main(int argc, char* argv[])
 
 				fclose(file_res_bound.get());
 
-				
-				//std::cout << "End direction number: " << num_direction << '\n';
+								
+				printf("End direction number #%d\n", num_direction);
 			}
 			/*---------------------------------- конец FOR по направлениям----------------------------------*/
+			
 		}
 
 		std::unique_ptr<FILE, int(*)(FILE*)>file_count_out_id(fopen((std::string(BASE_ADRESS) + "CountOutId"  + ".bin").c_str(), "wb"), fclose);

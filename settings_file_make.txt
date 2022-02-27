@@ -1,0 +1,16 @@
+D:\Desktop\FilesCourse\MySphere.vtk
+D:\Desktop\FilesCourse\Grids\Precision\surface_126_dir.txt
+D:\Desktop\FilesCourse\OutTestold.vtk
+D:\Desktop\FilesCourse\graphSet\GraphDirections\graph_126dir_mycell\graph
+D:\Desktop\FilesCourse\graphSet\normals_mysphere.txt
+
+\Sphere109.vtk
+
+
+D:\Desktop\FilesCourse\Grids\Precision\volume_565.vtk
+D:\Desktop\FilesCourse\graphSet\GraphDirections\graph_126dir_565cell\graph
+D:\Desktop\FilesCourse\IllumGrid\normals_565.txt
+
+D:\Desktop\FilesCourse\GraphDirections\Direction660\Sphere565\graph
+
+0 \\  рабочий файл (MyVTK.vtk, test.vtk, sol-T00848688-vtk.vtk)

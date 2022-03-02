@@ -91,6 +91,133 @@ int GetNodes(const int num_cur_cell, const vtkSmartPointer<vtkUnstructuredGrid>&
 	return 0;
 }
 
+int GetNodes(const int num_cur_cell, const vtkSmartPointer<vtkUnstructuredGrid>& unstructuredgrid, vtkCell* cur_cell, const int num_cur_out_face,
+	const Eigen::Matrix4d& vertex_tetra, const int* face_state, const Vector3& direction,
+	std::vector<cell>& nodes_value,
+	std::unique_ptr<FILE, int(*)(FILE*)>&file_res_bound,
+	std::unique_ptr<FILE, int(*)(FILE*)>&file_s,
+	std::unique_ptr<FILE, int(*)(FILE*)>&file_x,
+	std::unique_ptr<FILE, int(*)(FILE*)>&file_x0_local,
+	std::unique_ptr<FILE, int(*)(FILE*)>& file_in_id) {
+
+	Vector3 x;
+	Vector3 node;
+
+	switch (num_cur_out_face)
+	{
+
+	case 1:// 1->2
+		for (size_t num_node = 0; num_node < 3; ++num_node) {
+			node[0] = 0;
+			node[1] = straight_face.row(num_node)[0];
+			node[2] = straight_face.row(num_node)[1];
+			FromLocalToGlobalTetra(vertex_tetra, node, x);  // x->координата узла на выходящей грани
+
+//			X.push_back(x);
+			fwrite_unlocked(x.data(), sizeof(Type), 3, file_x.get()); posX++;
+
+			CalculateNodeValue(num_cur_cell, unstructuredgrid, cur_cell, num_cur_out_face, face_state, direction, nodes_value,
+				num_node, vertex_tetra, x, file_res_bound, file_s, file_x0_local, file_in_id);
+		}		
+		break;
+	case 2://2->0
+		for (size_t num_node = 0; num_node < 3; ++num_node) {
+			node[0] = straight_face.row(num_node)[0];
+			node[1] = 0;
+			node[2] = straight_face.row(num_node)[1];
+			FromLocalToGlobalTetra(vertex_tetra, node, x);  // x->координата узла на выходящей грани		
+			//X.push_back(x);
+			fwrite_unlocked(x.data(), sizeof(Type), 3, file_x.get()); posX++;
+
+			CalculateNodeValue(num_cur_cell, unstructuredgrid, cur_cell, num_cur_out_face, face_state, direction, nodes_value,
+				num_node, vertex_tetra, x, file_res_bound, file_s, file_x0_local, file_in_id);
+		}		
+		break;
+	case 0: //0->3
+		for (size_t num_node = 0; num_node < 3; ++num_node) {
+			node[0] = straight_face.row(num_node)[0];
+			node[1] = straight_face.row(num_node)[1];
+			node[2] = 0;
+			FromLocalToGlobalTetra(vertex_tetra, node, x);
+			//X.push_back(x);
+			fwrite_unlocked(x.data(), sizeof(Type), 3, file_x.get()); posX++;
+
+			CalculateNodeValue(num_cur_cell, unstructuredgrid, cur_cell, num_cur_out_face, face_state, direction, nodes_value,
+				num_node, vertex_tetra, x, file_res_bound, file_s, file_x0_local, file_in_id);
+		}// x->координата узла на выходящей грани		}	
+		break;
+	case 3: //3->1
+		for (size_t num_node = 0; num_node < 3; ++num_node) {
+			node[0] = inclined_face.row(num_node)[0];
+			node[1] = inclined_face.row(num_node)[1];
+			node[2] = 0;
+			FromPlaneToTetra(inverse_transform_matrix, start_point_plane_coord, node, node);
+			FromLocalToGlobalTetra(vertex_tetra, node, x);
+			//X.push_back(x);
+			fwrite_unlocked(x.data(), sizeof(Type), 3, file_x.get()); posX++;
+			
+			CalculateNodeValue(num_cur_cell, unstructuredgrid, cur_cell, num_cur_out_face, face_state, direction, nodes_value,
+				num_node, vertex_tetra, x,
+				file_res_bound, file_s, file_x0_local, file_in_id);
+		}		
+		break;
+	default:
+		std::cout << "Number face is not {0,1,2,3}????\n";
+		break;
+	}
+
+
+
+
+	// дублирование на соседнюю ячейку
+	/*int neighbor_id_face = nodes_value[num_cur_cell].neighbours_id_face[num_cur_out_face];
+
+	if (neighbor_id_face != -1)
+		nodes_value[neighbor_id_face / 4].nodes_value[neighbor_id_face % 4] =
+			nodes_value[num_cur_cell].nodes_value[num_cur_out_face];*/
+
+	return 0;
+}
+
+int CalculateNodeValue(const int num_cur_cell, const vtkSmartPointer<vtkUnstructuredGrid>& unstructuredgrid, vtkCell* cur_cell,
+	const int num_cur_out_face, const int* face_state, const Vector3& direction,
+	std::vector<cell>& nodes_value, const int num_node, const Eigen::Matrix4d& vertex_tetra, Vector3& x,
+	std::unique_ptr<FILE, int(*)(FILE*)>& file_res_bound,
+	std::unique_ptr<FILE, int(*)(FILE*)>& file_s,	
+	std::unique_ptr<FILE, int(*)(FILE*)>& file_x0_local,
+	std::unique_ptr<FILE, int(*)(FILE*)>& file_in_id) {
+
+	Vector3 x0;
+
+	for (size_t num_in_face = 0; num_in_face < 4; ++num_in_face) {
+		if (!face_state[num_in_face]) continue;  // обрабатываем только входные грани
+
+
+		IntersectionWithPlane(cur_cell->GetFace(num_in_face), x, direction, x0);
+
+		if (InTriangle(num_cur_cell, unstructuredgrid, cur_cell, num_in_face, x0)) {
+
+			Type s = (x - x0).norm();
+
+			fwrite_unlocked(&s, sizeof(Type), 1, file_s.get());  posS++;
+			fwrite_unlocked(&num_in_face, sizeof(int), 1, file_in_id.get()); posIn++;
+
+			/*S.push_back(s);
+			in_id.push_back(num_in_face);*/
+
+			// значение на входящей грани
+			Type I_x0 = CalculateIllumeOnInnerFace(num_cur_cell, num_in_face, vertex_tetra, x, x0, nodes_value, 
+				file_res_bound, file_x0_local);
+
+			break;
+		}
+
+	}//for num_in_face
+
+
+	return 0;
+}
+
 int CalculateNodeValue(const int num_cur_cell, const vtkSmartPointer<vtkUnstructuredGrid>& unstructuredgrid, vtkCell* cur_cell,
 	const int num_cur_out_face, const int* face_state, const Vector3& direction,
 	std::vector<cell>& nodes_value, const int num_node, const Eigen::Matrix4d& vertex_tetra, Vector3& x,
@@ -108,9 +235,9 @@ int CalculateNodeValue(const int num_cur_cell, const vtkSmartPointer<vtkUnstruct
 
 			Type s = (x - x0).norm();
 
-			S.push_back(s);
+			//S.push_back(s);
 
-			in_id.push_back(num_in_face);
+			//in_id.push_back(num_in_face);
 			//ofile_in_id << num_in_face << ' '; 
 		/*	ofile_s << s << ' ';
 			fwrite_unlocked(&s, sizeof(Type), 1, file_s.get());*/
@@ -181,17 +308,16 @@ size_t IntersectionWithPlaneDisk(const Vector3& X0, const Vector3& n, Vector3& r
 
 	return 0;
 }
-
 Type CalculateIllumeOnInnerFace(const int num_cell, const int num_in_face, const Eigen::Matrix4d& vertex_tetra,
 	const Vector3& x, const Vector3& x0, const std::vector<cell>& nodes_value) {
 	Type I_x0 = 0;
 
-	if (nodes_value[num_cell].neighbours_id_face[num_in_face] == -1) 
+	if (nodes_value[num_cell].neighbours_id_face[num_in_face] == -1)
 	{
 		/*Граничные условия*/
 		//I_x0 = BoundaryFunction(num_cell, x, direction, illum_old, directions, squares);
 		//ofile_x0_local << "0 0 ";
-				
+
 		X0.push_back(Vector2::Zero());
 		//fwrite_unlocked(x0.data(), sizeof(Type), 2, file_x0_local.get());
 
@@ -202,11 +328,11 @@ Type CalculateIllumeOnInnerFace(const int num_cell, const int num_in_face, const
 		pos_x_try++;
 		static int pos_id_try = 0;
 		pos_id_try++;
-		
+
 		Vector3 res;
 		// пересечние луча с плоскостью диска
 		IntersectionWithPlaneDisk(x, cur_direction, res);
-		
+
 		const Vector3 v1(1, 0, 0);
 		const Vector3 v2(0, -0.992877, -0.119145); // Wolfram
 
@@ -214,15 +340,15 @@ Type CalculateIllumeOnInnerFace(const int num_cell, const int num_in_face, const
 		Vector3 LocRes(res.dot(v1), res.dot(v2), 0);  // точка пересечения в локальных координатах плоскости
 		LocRes -= center_point;
 		const Type dist = LocRes.dot(LocRes);
-		
+
 		const Type A = cur_direction.dot(cur_direction);
-		
+
 		const Type buf = (x - center_point).dot(cur_direction);
 
 		const Type radical = 3 * buf * buf - 4 * A * (1 - 2 * x[0] + x.dot(x) - Rsphere * Rsphere);
 
 		// есть пересечение со сферой
-		if (radical >= 0) 
+		if (radical >= 0)
 		{
 			const Type t = (cur_direction[0] - cur_direction.dot(x) - sqrt(radical) / 2) / A;
 
@@ -230,7 +356,7 @@ Type CalculateIllumeOnInnerFace(const int num_cell, const int num_in_face, const
 
 			// не пересекает плоскость			
 			if (dist <= R1disk * R1disk || dist >= R2disk * R2disk) {
-				res_inner_bound.push_back(50); 
+				res_inner_bound.push_back(50);
 				X0.push_back(Vector2::Zero());
 				return 50; // 2;
 			}
@@ -261,18 +387,18 @@ Type CalculateIllumeOnInnerFace(const int num_cell, const int num_in_face, const
 		}
 		else // внутренняя граница не пересекла ни диск ни сферу 
 		{
-			
+
 			Vector3 try_x0;
 			FromGlobalToLocalTetra(vertex_tetra, x_try_surface[pos_x_try - 1], try_x0);
 
 
-			switch (id_try_surface[pos_id_try -1] % 4) {
+			switch (id_try_surface[pos_id_try - 1] % 4) {
 			case 3:
 				Vector3 local_plane_x0;
 				FromTetraToPlane(transform_matrix, start_point_plane_coord, try_x0, local_plane_x0);
 				X0.push_back(Vector2(local_plane_x0[0], local_plane_x0[1]));
 				break;
-			
+
 			case 1:
 				X0.push_back(Vector2(try_x0[1], try_x0[2]));
 				break;
@@ -284,7 +410,7 @@ Type CalculateIllumeOnInnerFace(const int num_cell, const int num_in_face, const
 				break;
 
 			}
-									
+
 			res_inner_bound.push_back(-10);  //<0  флаг  динамического расчета
 			return 10;// I_x0;
 		}
@@ -304,11 +430,11 @@ Type CalculateIllumeOnInnerFace(const int num_cell, const int num_in_face, const
 		case 3:
 			Vector3 local_plane_x0;
 			FromTetraToPlane(transform_matrix, start_point_plane_coord, x0_local, local_plane_x0);
-			
+
 			/*coef = GetInterpolationCoef(inclined_face, nodes_value[num_cell].nodes_value[num_in_face]);
 			I_x0 = local_plane_x0[0] * coef[0] + local_plane_x0[1] * coef[1] + coef[2];*/
 
-			/*fwrite_unlocked(Vector2(local_plane_x0[0], local_plane_x0[1]).data(), sizeof(Type), 2, file_x0_local.get());			
+			/*fwrite_unlocked(Vector2(local_plane_x0[0], local_plane_x0[1]).data(), sizeof(Type), 2, file_x0_local.get());
 			ofile_x0_local << local_plane_x0[0] << ' ' << local_plane_x0[1] << ' ';*/
 			X0.push_back(Vector2(local_plane_x0[0], local_plane_x0[1]));
 
@@ -328,9 +454,9 @@ Type CalculateIllumeOnInnerFace(const int num_cell, const int num_in_face, const
 		case 2:
 			/*coef = GetInterpolationCoef(straight_face, nodes_value[num_cell].nodes_value[num_in_face]);
 			I_x0 = x0_local[0] * coef[0] + x0_local[2] * coef[1] + coef[2];*/
-		/*	ofile_x0_local << x0_local[0] << ' ' << x0_local[2] << ' ';
+			/*	ofile_x0_local << x0_local[0] << ' ' << x0_local[2] << ' ';
 
-			fwrite_unlocked(Vector2(x0_local[0], x0_local[2]).data(), sizeof(Type), 2, file_x0_local.get());*/
+				fwrite_unlocked(Vector2(x0_local[0], x0_local[2]).data(), sizeof(Type), 2, file_x0_local.get());*/
 			X0.push_back(Vector2(x0_local[0], x0_local[2]));
 			break;
 		case 0:
@@ -343,10 +469,154 @@ Type CalculateIllumeOnInnerFace(const int num_cell, const int num_in_face, const
 			break;
 		}
 
-	/*	if (I_x0 < 0) {
-			count_negative_interpolation++;
-			return 0;
-		}*/
+		/*	if (I_x0 < 0) {
+				count_negative_interpolation++;
+				return 0;
+			}*/
+
+		return I_x0;
+	}
+}
+
+Type CalculateIllumeOnInnerFace(const int num_cell, const int num_in_face, const Eigen::Matrix4d& vertex_tetra,
+	const Vector3& x, const Vector3& x0, const std::vector<cell>& nodes_value,
+	std::unique_ptr<FILE, int(*)(FILE*)>& file_res_bound,
+	std::unique_ptr<FILE, int(*)(FILE*)>& file_x0_local) {
+
+	Type I_x0 = 0;
+
+	if (nodes_value[num_cell].neighbours_id_face[num_in_face] == -1)
+	{
+		/*Граничные условия*/
+		return I_x0;
+	}
+	else if (nodes_value[num_cell].neighbours_id_face[num_in_face] == -2) {
+		// внутренняя граница (//пересечение с диском / сферой)		
+		pos_x_try++;
+		static int pos_id_try = 0;
+		pos_id_try++;
+
+		Vector3 res;
+		// пересечние луча с плоскостью диска
+		IntersectionWithPlaneDisk(x, cur_direction, res);
+
+		const Vector3 v1(1, 0, 0);
+		const Vector3 v2(0, -0.992877, -0.119145); // Wolfram
+
+		//в плоскости
+		Vector3 LocRes(res.dot(v1), res.dot(v2), 0);  // точка пересечения в локальных координатах плоскости
+		LocRes -= center_point;
+		const Type dist = LocRes.dot(LocRes);
+
+		const Type A = cur_direction.dot(cur_direction);
+
+		const Type buf = (x - center_point).dot(cur_direction);
+
+		const Type radical = 3 * buf * buf - 4 * A * (1 - 2 * x[0] + x.dot(x) - Rsphere * Rsphere);
+
+		// есть пересечение со сферой
+		if (radical >= 0)
+		{
+			const Type t = (cur_direction[0] - cur_direction.dot(x) - sqrt(radical) / 2) / A;
+
+			const Vector3 inSphere = cur_direction * t + x;
+
+			// не пересекает плоскость			
+			if (dist <= R1disk * R1disk || dist >= R2disk * R2disk) {
+				I_x0 = 50;
+				fwrite_unlocked(&I_x0, sizeof(Type), 1, file_res_bound.get()); posRes++;
+				return I_x0; // 2;
+			}
+
+			// с чем луч встречается раньше?
+			{
+				const Vector3 Xsphere = x - inSphere;
+				const Vector3 Xres = x - res;
+				const Type LenSpehere = Xsphere.dot(Xsphere);
+				const Type LenPlane = Xres.dot(Xres);
+
+				if (LenSpehere > LenPlane) {
+					I_x0 = 20;
+					fwrite_unlocked(&I_x0, sizeof(Type), 1, file_res_bound.get()); posRes++;
+					return I_x0; // 1;
+				}
+				else {
+					I_x0 = 50;
+					fwrite_unlocked(&I_x0, sizeof(Type), 1, file_res_bound.get()); posRes++;
+					return I_x0; // 2;
+				}
+			}
+		}
+		else if ((dist < R2disk * R2disk) && (dist > R1disk * R1disk)) {
+			I_x0 = 20;
+			fwrite_unlocked(&I_x0, sizeof(Type), 1, file_res_bound.get()); posRes++;
+			return I_x0; // 1;
+		}
+		else // внутренняя граница не пересекла ни диск ни сферу 
+		{
+
+			Vector3 try_x0;
+			if (pos_x_try - 1 >= x_try_surface.size()) printf("err size try_id\n");
+				FromGlobalToLocalTetra(vertex_tetra, x_try_surface[pos_x_try - 1], try_x0);
+
+
+			switch (id_try_surface[pos_id_try - 1] % 4) {
+			case 3:
+				Vector3 local_plane_x0;
+				FromTetraToPlane(transform_matrix, start_point_plane_coord, try_x0, local_plane_x0);
+				fwrite_unlocked(Vector2(local_plane_x0[0], local_plane_x0[1]).data(), sizeof(Type), 2, file_x0_local.get());
+				posX0++;
+				break;
+
+			case 1:
+				fwrite_unlocked(Vector2(try_x0[1], try_x0[2]).data(), sizeof(Type), 2, file_x0_local.get());
+				posX0++;
+				break;
+			case 2:
+				fwrite_unlocked(Vector2(try_x0[0], try_x0[2]).data(), sizeof(Type), 2, file_x0_local.get());
+				posX0++;
+				break;
+			case 0:
+				fwrite_unlocked(Vector2(try_x0[0], try_x0[1]).data(), sizeof(Type), 2, file_x0_local.get());
+				posX0++;
+				break;
+			}
+
+			I_x0 = -10;
+			fwrite_unlocked(&I_x0, sizeof(Type), 1, file_res_bound.get()); posRes++;
+			return I_x0; // 2;
+		}
+
+	}
+	else
+	{
+
+		Vector3 x0_local;
+		FromGlobalToLocalTetra(vertex_tetra, x0, x0_local);
+
+		switch (num_in_face) {
+		case 3:
+			Vector3 local_plane_x0;
+			FromTetraToPlane(transform_matrix, start_point_plane_coord, x0_local, local_plane_x0);
+			fwrite_unlocked(Vector2(local_plane_x0[0], local_plane_x0[1]).data(), sizeof(Type), 2, file_x0_local.get());
+			posX0++;
+
+			/*I_x0 = x0_local[1] * coef[0] + x0_local[2] * coef[1] + coef[2];
+			Vector3 coef = GetInterpolationCoef(straight_face, nodes_value.find(global_num_in_face)->second);*/
+			break;
+		case 1:
+			fwrite_unlocked(Vector2(x0_local[1], x0_local[2]).data(), sizeof(Type), 2, file_x0_local.get());
+			posX0++;
+			break;
+		case 2:
+			fwrite_unlocked(Vector2(x0_local[0], x0_local[2]).data(), sizeof(Type), 2, file_x0_local.get());
+			posX0++;
+			break;
+		case 0:
+			fwrite_unlocked(Vector2(x0_local[0], x0_local[1]).data(), sizeof(Type), 2, file_x0_local.get());
+			posX0++;
+			break;
+		}
 
 		return I_x0;
 	}

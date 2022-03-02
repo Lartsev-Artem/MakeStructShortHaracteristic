@@ -29,16 +29,25 @@ std::vector<Type> S;
 std::vector<Type> res_inner_bound;
 std::vector<Vector3> x_try_surface;
 std::vector<int> id_try_surface;
+
+int n_out;
+
 int pos_x_try;
+int posX;
+int posX0;
+int posOutC;
+int posOut;
+int posIn;
+int posS;
+int posRes;
 
-std::vector<int> in_id;
-std::vector<int> out_id;
 
-const Vector3 center_point(0, 0, 0);
-const Type inner_radius = 0.51; // радиус внутренней сферы (с запасом)
+//const Vector3 center_point(0, 0, 0);
+//const Type inner_radius =  0.51; // радиус внутренней сферы (с запасом)
 
-//const Vector3 center_point(1, 0, 0);
-//const Type R = 0.11;  // радиус внутренней сферы (с запасом)
+const Vector3 center_point(1, 0, 0);
+const Type inner_radius = 0.11; // радиус внутренней сферы (с запасом)
+
 
 int main(int argc, char* argv[])
 {
@@ -111,8 +120,6 @@ int main(int argc, char* argv[])
 
 	InitGlobalValue(start_point_plane_coord, transform_matrix, inverse_transform_matrix, straight_face, inclined_face);
 
-	// ”пор€доченные индексы €чеек по данному направлению
-	vector<IntId> sorted_id_cell(count_cells);
 
 	Eigen::Matrix4d vertex_tetra;
 	/* x1 x2 x3 x4
@@ -128,23 +135,42 @@ int main(int argc, char* argv[])
 	std::vector<Normals> normals;
 	ReadNormalFile(name_file_normals, normals);
 
+	// ”пор€доченные индексы €чеек по данному направлению
+	vector<IntId> sorted_id_cell(count_cells * count_directions);
 	{
-		int n;
 		std::unique_ptr<FILE, int(*)(FILE*)> file_id(fopen((std::string(BASE_ADRESS) + "id_defining_faces.bin").c_str(), "rb"), fclose);
-		if (!file_id) { printf("Error file_id\n"); return 1; }
+		std::unique_ptr<FILE, int(*)(FILE*)>file_graph(fopen((std::string(BASE_ADRESS) + "graph" + ".bin").c_str(), "rb"), fclose);
+		std::unique_ptr<FILE, int(*)(FILE*)>file_x_defining_faces(fopen((std::string(BASE_ADRESS) + "x_defining_faces" + ".bin").c_str(), "rb"), fclose);
 
-		fread_unlocked(&n, sizeof(int), 1, file_id.get());
+		if (!file_id) { printf("Error file_id\n"); return 1; }
+		if (!file_graph) { printf("file_graph not open\n"); return 1; }
+		if (!file_x_defining_faces) { printf("file_x_defining_faces not open\n"); return 1; }
+
+		int n;
+		std::ifstream ifile(std::string(BASE_ADRESS) + "Size.txt");
+		if (!ifile.is_open()) {
+			printf("Error read files size\n");
+			return 1;
+		}
+		ifile >> n;
+		ifile.close();
+
 		id_try_surface.resize(n);
+		x_try_surface.resize(n);
+
 		fread_unlocked(id_try_surface.data(), sizeof(int), n, file_id.get());
+		fread_unlocked(x_try_surface.data(), sizeof(Vector3), n, file_x_defining_faces.get());
+		fread_unlocked(sorted_id_cell.data(), sizeof(int), count_cells * count_directions, file_graph.get());
 
 		fclose(file_id.get());
+		fclose(file_graph.get());
+		fclose(file_x_defining_faces.get());
 	}
 
 	//std::vector<Vector3> centers;
 	//FindAllCenterOfTetra(unstructured_grid, centers);
 	//{
 	//	ofile_centers.open(std::string(BASE_ADRESS) + "centers.txt");
-
 	//	if (!ofile_centers.is_open()) printf("centers not open\n");
 	//	
 	//	ofile_centers << centers.size() << '\n';		
@@ -162,167 +188,109 @@ int main(int argc, char* argv[])
 	ofstream ofile;
 	ofile.open("File_with_Logs.txt");
 
-	std::vector<int> nCount(count_directions * count_cells, 0);
 
-	 X.reserve(3 * count_cells);
-	 X0.reserve(3 * count_cells);
-	 S.reserve(3 * count_cells);
-	 res_inner_bound.reserve(1000); // размер внутренней границе
-	
+	posX = 0;
+	posX0 = 0;
+	posOutC = 0;
+	posOut = 0;
+	posIn = 0;
+	posS = 0;
+	posRes = 0;
+	pos_x_try = 0;
+
 	_clock = -omp_get_wtime();
+	{
+		std::unique_ptr<FILE, int(*)(FILE*)>file_out_id(fopen((std::string(BASE_ADRESS) + "OutId" + ".bin").c_str(), "wb"), fclose);
+		std::unique_ptr<FILE, int(*)(FILE*)>file_in_id(fopen((std::string(BASE_ADRESS) + "InId" + ".bin").c_str(), "wb"), fclose);
+		std::unique_ptr<FILE, int(*)(FILE*)>file_x(fopen((std::string(BASE_ADRESS) + "X" + ".bin").c_str(), "wb"), fclose);
+		std::unique_ptr<FILE, int(*)(FILE*)>file_x0_local(fopen((std::string(BASE_ADRESS) + "locX0" + ".bin").c_str(), "wb"), fclose);
+		std::unique_ptr<FILE, int(*)(FILE*)>file_s(fopen((std::string(BASE_ADRESS) + "S" + ".bin").c_str(), "wb"), fclose);
+		std::unique_ptr<FILE, int(*)(FILE*)>file_count_out_id(fopen((std::string(BASE_ADRESS) + "CountOutId" + ".bin").c_str(), "wb"), fclose);
+		std::unique_ptr<FILE, int(*)(FILE*)>file_res_bound(fopen((std::string(BASE_ADRESS) + "ResBound" + ".bin").c_str(), "wb"), fclose);
+
+		if (!file_out_id) printf("Outid not open\n");
+		if (!file_in_id) printf("Inid not open\n");
+		if (!file_x) printf("Xid not open\n");
+		if (!file_x0_local) printf("X0id not open\n");
+		if (!file_s) printf("Sid not open\n");
+		if (!file_count_out_id) printf("file_count_out_id not open\n");
+		if (!file_res_bound) printf("file_res_bound not open\n");
+
+		Vector3 x;
+		Vector3 x0;
+		int num_cell;
+		const int count_cells = unstructured_grid->GetNumberOfCells();
+
+		/*---------------------------------- далее FOR по направлени€м----------------------------------*/
+		for (int num_direction = 0; num_direction < count_directions; ++num_direction)
 		{
+			direction = directions[num_direction];
 
-			/*---------------------------------- далее FOR по направлени€м----------------------------------*/
-			for (int num_direction = 0; num_direction < count_directions; ++num_direction)
-			{				
-				direction = directions[num_direction];
+			num_cur_direction = num_direction;
+			cur_direction = direction;
 
-				num_cur_direction = num_direction;
-				cur_direction = direction;
+			int face_state[4];  // 0=> выход€ща€ грань,  1=> вход€ща€   
 
-				ReadGraphBin(name_file_graph + to_string(num_direction) + ".bin", sorted_id_cell);
-				//ResetNodesValue(nodes_value);
+			/*---------------------------------- далее FOR по €чейкам----------------------------------*/
+			for (int h = 0; h < count_cells; ++h) {
+				if (count_cells * num_direction + h > sorted_id_cell.size()) printf("err size graph\n");
+				num_cell = sorted_id_cell[count_cells * num_direction + h];
 
-				Vector3 x;
-				Vector3 x0;
-				int num_cell;
-				const int count_cells = unstructured_grid->GetNumberOfCells();
-				X.clear();
-				X0.clear();
-				S.clear();
-				res_inner_bound.clear();
+				SetVertexMatrix(num_cell, unstructured_grid, vertex_tetra);
+				FindInAndOutFaces(direction, num_cell, normals, face_state);
 
-				X.reserve(3 * count_cells);
-				X0.reserve(3 * count_cells);
-				S.reserve(3 * count_cells);
-				res_inner_bound.reserve(1000); // размер внутренней границе
-				
+				n_out = 0;
 
-				std::unique_ptr<FILE, int(*)(FILE*)>file_out_id(fopen((std::string(BASE_ADRESS) + "OutId" + to_string(num_direction) + ".bin").c_str(), "wb"), fclose);
-				std::unique_ptr<FILE, int(*)(FILE*)>file_in_id (fopen((std::string(BASE_ADRESS) + "InId" + to_string(num_direction) + ".bin").c_str(), "wb"), fclose);
-				std::unique_ptr<FILE, int(*)(FILE*)>file_x(fopen((std::string(BASE_ADRESS) + "X" + to_string(num_direction) + ".bin").c_str(), "wb"), fclose);
-				std::unique_ptr<FILE, int(*)(FILE*)>file_x0_local(fopen((std::string(BASE_ADRESS) + "locX0" + to_string(num_direction) + ".bin").c_str(), "wb"), fclose);
-				std::unique_ptr<FILE, int(*)(FILE*)>file_s(fopen((std::string(BASE_ADRESS) + "S" + to_string(num_direction) + ".bin").c_str(), "wb"), fclose);
-				std::unique_ptr<FILE, int(*)(FILE*)>file_res_bound(fopen((std::string(BASE_ADRESS) + "ResBound" + to_string(num_direction) + ".bin").c_str(), "wb"), fclose);
-				
-				std::unique_ptr<FILE, int(*)(FILE*)>file_x_defining_faces(fopen((std::string(BASE_ADRESS) + "x_defining_faces" + to_string(num_direction) + ".bin").c_str(), "rb"), fclose);
-				if (!file_x_defining_faces) printf("file_x_defining_faces not open\n");
+				for (size_t num_out_face = 0; num_out_face < 4; ++num_out_face) {
+					if (!face_state[num_out_face]) {  // выход€щие грани
+						GetNodes(num_cell, unstructured_grid, unstructured_grid->GetCell(num_cell), num_out_face, vertex_tetra,
+							face_state, direction, nodes_value,
+							file_res_bound, file_s, file_x, file_x0_local, file_in_id);
 
-				int n = -1;				
-				fread_unlocked(&n, sizeof(int), 1, file_x_defining_faces.get());
-				x_try_surface.resize(n);
-				fread_unlocked(x_try_surface.data(), sizeof(Vector3), n, file_x_defining_faces.get());
-				fclose(file_x_defining_faces.get());
-				pos_x_try = 0;
-
-
-
-			    if (!file_out_id) printf("Outid not open\n");
-				if (!file_in_id) printf("Inid not open\n");
-				if (!file_x) printf("Xid not open\n");
-				if (!file_x0_local) printf("X0id not open\n");
-				if (!file_s) printf("Sid not open\n");
-				
-				
-
-				int face_state[4];  // 0=> выход€ща€ грань,  1=> вход€ща€   
-
-				/*---------------------------------- далее FOR по €чейкам----------------------------------*/
-				for (int h = 0; h < count_cells; ++h) {
-					num_cell = sorted_id_cell[h];
-
-					SetVertexMatrix(num_cell, unstructured_grid, vertex_tetra);
-					FindInAndOutFaces(direction, num_cell, normals, face_state);
-
-					in_id.clear();
-					out_id.clear();
-
-
-					for (size_t num_out_face = 0; num_out_face < 4; ++num_out_face) {
-						if (!face_state[num_out_face]) {  // выход€щие грани
-							GetNodes(num_cell, unstructured_grid, unstructured_grid->GetCell(num_cell), num_out_face, vertex_tetra, face_state, direction,
-								nodes_value, Illum2, directions, squares);
-							out_id.push_back(num_out_face);
-							//ofile_out_id << num_out_face << ' ';
-						}
+						fwrite_unlocked(&num_out_face, sizeof(int), 1, file_out_id.get()); posOut++;
+						n_out++;
 					}
-
-					int n_out = out_id.size();
-					int n_in = in_id.size();
-
-					//ofile_count_out_id << n_out << '\n';  
-					
-					// ввести массив дл€ идентичного хранени€
-					{
-						nCount[count_directions * num_cell + num_direction] = n_out;  // мимо кеша
-					}
-
-					fwrite_unlocked(out_id.data(), sizeof(int), n_out, file_out_id.get());
-
-					fwrite_unlocked(in_id.data(), sizeof(int), n_in, file_in_id.get());
-				
-
-					//Type I_k_dir = GetValueInCenterCell(num_cell, unstructured_grid, unstructured_grid->GetCell(num_cell), centers[num_cell], direction, vertex_tetra,
-						//nodes_value, Illum2, directions, squares);
-
-					//Illum[num_direction * count_cells + num_cell] = 0;// I_k_dir;
-				}
-				/*---------------------------------- конец FOR по €чейкам----------------------------------*/
-
-
-				for (size_t i = 0; i < X.size(); i++)
-				{
-					fwrite_unlocked(X[i].data(), sizeof(Type), 3, file_x.get());
-				}
-				for (size_t i = 0; i < X0.size(); i++)
-				{
-					fwrite_unlocked(X0[i].data(), sizeof(Type), 2, file_x0_local.get());
 				}
 
-				fwrite_unlocked(S.data(), sizeof(Type), S.size(), file_s.get());
-
-				int size = res_inner_bound.size();
-				fwrite_unlocked(&size, sizeof(int), 1, file_res_bound.get());
-				fwrite_unlocked(res_inner_bound.data(), sizeof(Type), size, file_res_bound.get());
-				
-				fclose(file_out_id.get());
-				fclose(file_in_id.get());
-
-				fclose(file_x.get());
-				fclose(file_x0_local.get());
-				fclose(file_s.get());
-
-				fclose(file_res_bound.get());
-
-								
-				printf("End direction number #%d\n", num_direction);
+				fwrite_unlocked(&n_out, sizeof(int), 1, file_count_out_id.get()); posOutC++;
 			}
-			/*---------------------------------- конец FOR по направлени€м----------------------------------*/
-			
-		}
+			/*---------------------------------- конец FOR по €чейкам----------------------------------*/
 
-		std::unique_ptr<FILE, int(*)(FILE*)>file_count_out_id(fopen((std::string(BASE_ADRESS) + "CountOutId"  + ".bin").c_str(), "wb"), fclose);
-		fwrite_unlocked(nCount.data(), sizeof(int), nCount.size(), file_count_out_id.get());
+			printf("End direction number #%d\n", num_direction);
+		}
+		/*---------------------------------- конец FOR по направлени€м----------------------------------*/
+
+		fclose(file_res_bound.get());
+
+		fclose(file_out_id.get());
+		fclose(file_in_id.get());
+
+		fclose(file_x.get());
+		fclose(file_x0_local.get());
+		fclose(file_s.get());
 		fclose(file_count_out_id.get());
 
-		_clock += omp_get_wtime();
-		//count++;
-		//norm = NormIllum(Illum, Illum2);
-		//std::cout << "Error:= " << norm << '\n';
-		std::cout << "Time of iter: " << _clock << '\n';
-	
-		
-		ofile << "Time of iter: " << _clock << '\n';		
+		std::ofstream ofile2(std::string(BASE_ADRESS) + "Size.txt", std::ios::app);
+
+		ofile2 << posX << '\n';
+		ofile2 << posX0 << '\n';
+		ofile2 << posOutC << '\n';
+		ofile2 << posOut << '\n';
+		ofile2 << posIn << '\n';
+		ofile2 << posS << '\n';
+		ofile2 << posRes << '\n';
+
+		ofile2.close();
+
+	}
 
 
+	_clock += omp_get_wtime();
+	std::cout << "Time of iter: " << _clock << '\n';
 
-	//Illum.swap(Illum2);
+	ofile << "Time of iter: " << _clock << '\n';
 	ofile.close();
 
-	/*vector<Type> energy(count_cells);
-	MakeEnergy(Illum, squares, square_surface, energy);
-
-	WriteFileSolution(out_file_grid_vtk, Illum, energy, unstructured_grid);*/
 	return 0;
 }
 

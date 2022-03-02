@@ -4,16 +4,13 @@
 
 #include "struct_short_characteristics_headers.h"
 
-#define BASE_ADRESS "D:\\Desktop\\FilesCourse\\IllumGrid\\testConfig\\"
+#define BASE_ADRESS "D:\\Desktop\\FilesCourse\\IllumGrid\\"
 
 
 #ifdef _MSC_VER
 #define fwrite_unlocked _fwrite_nolock
 #define fread_unlocked  _fread_nolock
 #endif
-
-extern std::vector<int> in_id;
-extern std::vector<int> out_id;
 
 typedef int IntId;
 typedef double Type;
@@ -90,7 +87,17 @@ const Type R2disk = 0.2;
 extern std::vector<Type> res_inner_bound;  // значение на внутренней границе
 extern std::vector<Vector3> x_try_surface;
 extern std::vector<int> id_try_surface;
+
 extern int pos_x_try;
+extern int posX;
+extern int posX0;
+extern int posOutC;
+extern int posOut;
+extern int posIn;
+extern int posS;
+extern int posRes;
+
+extern int n_out;
 
 
 #endif

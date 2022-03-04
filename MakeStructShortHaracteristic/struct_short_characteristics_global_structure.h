@@ -4,8 +4,6 @@
 
 #include "struct_short_characteristics_headers.h"
 
-#define BASE_ADRESS "D:\\Desktop\\FilesCourse\\IllumGrid\\"
-
 
 #ifdef _MSC_VER
 #define fwrite_unlocked _fwrite_nolock
@@ -99,5 +97,6 @@ extern int posRes;
 
 extern int n_out;
 
+extern std::string BASE_ADRESS;// "D:\\Desktop\\FilesCourse\\IllumGrid\\"
 
 #endif

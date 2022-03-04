@@ -30,6 +30,8 @@ std::vector<Type> res_inner_bound;
 std::vector<Vector3> x_try_surface;
 std::vector<int> id_try_surface;
 
+std::string BASE_ADRESS;
+
 int n_out;
 
 int pos_x_try;
@@ -65,7 +67,7 @@ int main(int argc, char* argv[])
 	std::string out_file_grid_vtk;
 	std::string name_file_normals;
 
-	if (ReadStartSettings(name_file_settings, name_file_vtk, name_file_sphere_direction, out_file_grid_vtk, name_file_graph, name_file_normals)) {
+	if (ReadStartSettings(name_file_settings, name_file_vtk, name_file_sphere_direction, out_file_grid_vtk, BASE_ADRESS, name_file_normals)) {
 		std::cout << "Error reading the start settings\n";
 		return 1;
 	}
